@@ -2,320 +2,564 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DebtFree App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DebtFree - Financial Strategy Planner</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-        .glass { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); }
-        input[type="number"]::-webkit-inner-spin-button, 
-        input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-        .tab-active { color: #2563eb; border-top: 2px solid #2563eb; }
-        canvas { max-width: 100% !important; }
-        .view { transition: opacity 0.2s ease-in-out; }
+        body { background-color: #f8fafc; font-family: 'Inter', sans-serif; color: #1e293b; overflow-x: hidden; }
+        .card { background: white; border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 1.5rem; border: 1px solid #e2e8f0; }
+        .input-field { border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.5rem; width: 100%; font-size: 0.875rem; }
+        .input-field:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .remove-btn { color: #ef4444; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-weight: bold; }
+        .remove-btn:hover { background-color: #fee2e2; }
+        
+        .grid-container { display: grid; grid-template-columns: 1fr 1.5fr; gap: 1.5rem; padding: 1.5rem; width: 100%; max-width: 1600px; margin: 0 auto; }
+        .full-width { grid-column: span 2; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; font-size: 0.7rem; text-transform: uppercase; color: #64748b; padding: 0.75rem 0.5rem; border-bottom: 1px solid #e2e8f0; }
+        td { padding: 0.75rem 0.5rem; }
+
+        .target-row { background-color: #f0f9ff !important; }
+        .target-input { border-color: #0ea5e9 !important; font-weight: 800 !important; color: #0369a1 !important; }
+
+        @media (max-width: 1024px) { .grid-container { grid-template-columns: 1fr; } .full-width { grid-column: span 1; } }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
+<body>
 
-    <!-- Desktop Header -->
-    <header class="hidden md:flex glass sticky top-0 z-50 px-8 py-4 border-b items-center justify-between">
-        <div class="flex items-center gap-2">
-            <div class="bg-blue-600 text-white p-1.5 rounded-lg font-black text-xl">DF</div>
-            <h1 class="text-xl font-extrabold tracking-tight">DebtFree</h1>
+<div id="app">
+    <header class="p-6 bg-white border-b flex justify-between items-center sticky top-0 z-40">
+        <div>
+            <h1 class="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
+                <span class="bg-blue-600 text-white px-2 py-1 rounded">DF</span> DebtFree
+            </h1>
         </div>
-        <div id="status-indicator" class="text-[10px] font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-wider">Local Mode</div>
-    </header>
-
-    <!-- Mobile Header -->
-    <header class="md:hidden flex px-6 py-4 items-center justify-between border-b glass sticky top-0 z-50">
-        <h1 class="font-extrabold text-lg">DebtFree</h1>
-        <div id="mobile-surplus" class="text-emerald-600 font-black">$0</div>
-    </header>
-
-    <main id="main-content" class="flex-1 pb-24 md:pb-8">
-        <!-- Dashboard View -->
-        <div id="view-dashboard" class="view p-4 md:p-8 max-w-7xl mx-auto space-y-6">
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Overview Cards -->
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase">Monthly Surplus</p>
-                    <h2 id="stat-surplus" class="text-3xl font-black text-emerald-600">$0</h2>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase">Total Debt</p>
-                    <h2 id="stat-debt" class="text-3xl font-black text-slate-800">$0</h2>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <p class="text-[10px] font-bold text-slate-400 uppercase">Debt Free Date</p>
-                    <h2 id="stat-date" class="text-3xl font-black text-blue-600">--</h2>
-                </div>
-            </div>
-
-            <!-- Charts Section -->
-            <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <div class="bg-slate-900 p-6 rounded-2xl shadow-xl min-h-[400px]">
-                    <h3 class="text-white font-bold mb-4">Payoff Projection</h3>
-                    <div class="h-64 md:h-80"><canvas id="debtChart"></canvas></div>
-                </div>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 min-h-[400px]">
-                    <h3 class="text-slate-800 font-bold mb-4">Net Worth Forecast</h3>
-                    <div class="h-64 md:h-80"><canvas id="nwChart"></canvas></div>
-                </div>
+        <div class="flex items-center gap-6">
+            <div class="text-right">
+                <span class="text-[10px] font-bold text-slate-400 uppercase block">Monthly Surplus</span>
+                <span class="text-xl font-black text-emerald-600" id="header-surplus">$0.00</span>
             </div>
         </div>
+    </header>
 
-        <!-- Inputs View -->
-        <div id="view-inputs" class="view hidden p-4 md:p-8 max-w-4xl mx-auto space-y-8">
-            <section class="space-y-4">
-                <h3 class="text-xl font-bold">Income & Budget</h3>
-                <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-[10px] font-bold uppercase text-slate-500">Monthly Income</label>
-                            <input type="number" id="input-income" class="w-full text-xl font-bold p-3 bg-slate-50 rounded-xl mt-1 border focus:border-blue-500 outline-none" value="5000" oninput="saveData()">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold uppercase text-slate-500">Fixed Expenses</label>
-                            <input type="number" id="input-expenses" class="w-full text-xl font-bold p-3 bg-slate-50 rounded-xl mt-1 border focus:border-blue-500 outline-none" value="2500" oninput="saveData()">
-                        </div>
+    <div class="grid-container">
+        <!-- LEFT: Income & Assets -->
+        <div class="space-y-6">
+            <section class="card">
+                <h2 class="text-xl font-bold mb-4 flex items-center gap-2 text-slate-800">Income & Expenses</h2>
+                <div class="bg-slate-50 p-4 rounded-xl mb-4 border border-slate-200">
+                    <div class="flex justify-between items-end mb-1">
+                        <label class="text-[10px] font-black uppercase text-slate-500 block">Income Input</label>
+                        <span id="yearly-income-label" class="text-[10px] font-bold text-blue-600 uppercase">Est. Yearly: $0</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="number" id="income-amount" class="input-field text-lg font-bold" value="5500" oninput="calculateAndRefresh()">
+                        <select id="income-freq" class="input-field w-32" onchange="toggleHourlyDisplay(); calculateAndRefresh()">
+                            <option value="hourly">Hourly</option>
+                            <option value="1">Annual</option>
+                            <option value="12" selected>Monthly</option>
+                            <option value="26">Bi-Weekly</option>
+                            <option value="52">Weekly</option>
+                            <option value="365">Daily</option>
+                        </select>
+                    </div>
+                    <div id="hourly-settings" class="hidden mt-3 pt-3 border-t border-slate-200">
+                        <label class="text-[10px] font-black uppercase text-slate-500 mb-1 block">Weekly Hours</label>
+                        <input type="number" id="weekly-hours" class="input-field" value="40" oninput="calculateAndRefresh()">
                     </div>
                 </div>
+                <div id="expenses-list" class="space-y-2"></div>
+                <button onclick="addRow('expense')" class="mt-4 w-full py-2 bg-slate-100 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-200 transition">+ Add Expense</button>
             </section>
 
-            <section class="space-y-4">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-xl font-bold">Debts</h3>
-                    <button onclick="addDebt()" class="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold active:scale-95 transition-transform">+ Add Debt</button>
+            <section class="card">
+                <h2 class="text-xl font-bold mb-4 text-slate-800">Assets</h2>
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr><th>Asset</th><th>Balance</th><th>Contrib.</th><th>Freq</th><th>APY%</th><th></th></tr>
+                        </thead>
+                        <tbody id="assets-list"></tbody>
+                    </table>
                 </div>
-                <div id="debt-list" class="space-y-3"></div>
+                <button onclick="addRow('asset')" class="mt-4 w-full py-2 bg-slate-100 rounded-lg text-sm font-bold text-slate-600 hover:bg-slate-200 transition">+ Add Asset</button>
             </section>
         </div>
-    </main>
 
-    <!-- Mobile Navigation -->
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 glass border-t flex justify-around items-center safe-bottom h-20 z-50">
-        <button onclick="switchView('dashboard')" id="tab-dashboard" class="flex flex-col items-center gap-1 text-slate-400 transition-all">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
-            <span class="text-[10px] font-bold">Overview</span>
-        </button>
-        <button onclick="switchView('inputs')" id="tab-inputs" class="flex flex-col items-center gap-1 text-slate-400 transition-all">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-            <span class="text-[10px] font-bold">Edit Data</span>
-        </button>
-    </nav>
+        <!-- RIGHT: Debt & Strategy -->
+        <div class="space-y-6">
+            <section class="card">
+                <div class="flex justify-between items-start mb-2">
+                    <h2 class="text-xl font-bold text-slate-800">Debt & Strategy</h2>
+                    <div class="flex flex-col items-end gap-2">
+                        <select id="active-strategy" class="input-field w-44 font-bold bg-blue-50 border-blue-200" onchange="updateStrategyUI(); calculateAndRefresh(true)">
+                            <option value="min">Min Payments Only</option>
+                            <option value="manual">Aggressive Manual</option>
+                            <option value="avalanche">Avalanche</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="strategy-info" class="mb-6 p-3 bg-blue-50 border border-blue-100 rounded-lg text-[11px] leading-relaxed text-blue-800">
+                    <p id="strategy-desc">Select a strategy to see how it works.</p>
+                </div>
 
-    <script>
-        // State Management
-        let state = {
-            income: 5000,
-            expenses: 2500,
-            debts: [
-                { id: 1, name: 'Credit Card', balance: 5000, apr: 22, min: 150 },
-                { id: 2, name: 'Car Loan', balance: 15000, apr: 6, min: 350 }
-            ]
-        };
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr><th>Debt Name</th><th class="w-24">Type</th><th>Balance</th><th>APR%</th><th>Monthly Pmt</th><th class="w-20">Priority</th><th></th></tr>
+                        </thead>
+                        <tbody id="debts-list"></tbody>
+                    </table>
+                </div>
+                <button onclick="addRow('debt')" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg font-bold text-sm shadow-lg shadow-blue-200 hover:bg-blue-700 transition">Add New Debt</button>
+            </section>
 
-        let charts = {};
+            <section class="card">
+                <h2 class="text-xl font-bold mb-4 text-slate-800">Strategy Comparison</h2>
+                <div id="comparison-stats" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"></div>
+                <div class="flex flex-col md:flex-row gap-6 items-center">
+                    <div class="w-full md:w-1/2 aspect-square relative">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                    <div class="w-full md:w-1/2 space-y-2" id="payoff-order-list"></div>
+                </div>
+            </section>
+        </div>
 
-        // Storage Logic
-        function loadData() {
-            const saved = localStorage.getItem('debtfree_data');
-            if (saved) {
-                state = JSON.parse(saved);
+        <section class="card full-width bg-slate-900 border-none p-8">
+            <h2 class="text-xl font-bold mb-6 text-white">Debt Payoff Projection</h2>
+            <div class="h-[400px]"><canvas id="debtChart"></canvas></div>
+        </section>
+
+        <section class="card full-width">
+            <h2 class="text-xl font-bold mb-6 text-slate-800">Net Worth Forecast (To Debt Free)</h2>
+            <div class="h-[400px]"><canvas id="nwChart"></canvas></div>
+        </section>
+    </div>
+</div>
+
+<script>
+    let state = {
+        expenses: [{ id: 1, name: 'Housing', amount: 1500, freq: 12 }, { id: 2, name: 'Food & Utilities', amount: 800, freq: 12 }],
+        assets: [{ id: 1, name: '401k', balance: 15000, contrib: 400, freq: 12, apy: 7 }],
+        debts: [
+            { id: 1, name: 'Credit Card', type: 'credit', balance: 6000, apr: 22, minPayment: 180, priority: 1 },
+            { id: 2, name: 'Home Mortgage', type: 'mortgage', balance: 250000, apr: 6.5, minPayment: 1600, priority: 3 },
+            { id: 3, name: 'Student Loan', type: 'loan', balance: 25000, apr: 5, minPayment: 300, priority: 2 }
+        ]
+    };
+
+    const STRATEGY_DESCRIPTIONS = {
+        min: "Pay only the minimum required amount on all debts. This usually results in the highest interest paid and longest payoff time.",
+        manual: "<strong>Aggressive Manual:</strong> Choose the order in which the loans are paid off. Priority 1 always receives maximum monthly payment your budget can afford. This may be desirable if you want to pay off loans with the largest minimum monthly payment first or if you want to payoff your loans in order of smallest to largest.",
+        avalanche: "<strong>Avalanche:</strong> Loans are paid off as fast as possible in descending order of interest rates. This is mathematically the most efficient way to reduce total interest paid."
+    };
+
+    let charts = {};
+
+    function getMonthlyVal(amt, freq) { 
+        if (freq === 'hourly') {
+            const hours = parseFloat(document.getElementById('weekly-hours').value) || 0;
+            return (parseFloat(amt) * hours * 52) / 12;
+        }
+        return (parseFloat(amt) * parseInt(freq)) / 12 || 0; 
+    }
+
+    function toggleHourlyDisplay() {
+        const freq = document.getElementById('income-freq').value;
+        const hourlySettings = document.getElementById('hourly-settings');
+        if (freq === 'hourly') {
+            hourlySettings.classList.remove('hidden');
+        } else {
+            hourlySettings.classList.add('hidden');
+        }
+    }
+
+    function updateStrategyUI() {
+        const strat = document.getElementById('active-strategy').value;
+        document.getElementById('strategy-desc').innerHTML = STRATEGY_DESCRIPTIONS[strat];
+    }
+
+    function getMonthYear(monthsFromNow) {
+        const d = new Date();
+        d.setMonth(d.getMonth() + monthsFromNow);
+        return d.toLocaleString('default', { month: 'short', year: 'numeric' });
+    }
+
+    function init() {
+        renderLists();
+        updateStrategyUI();
+        calculateAndRefresh();
+    }
+
+    function renderLists() {
+        document.getElementById('expenses-list').innerHTML = state.expenses.map(e => `
+            <div class="flex gap-2">
+                <input type="text" value="${e.name}" class="input-field flex-1" oninput="updateItem('expense', ${e.id}, 'name', this.value)">
+                <input type="number" value="${e.amount}" class="input-field w-24" oninput="updateItem('expense', ${e.id}, 'amount', this.value)">
+                <select class="input-field w-24 text-[10px]" onchange="updateItem('expense', ${e.id}, 'freq', this.value); calculateAndRefresh(true)">
+                    <option value="1" ${e.freq == 1 ? 'selected' : ''}>Yr</option>
+                    <option value="12" ${e.freq == 12 ? 'selected' : ''}>Mo</option>
+                    <option value="26" ${e.freq == 26 ? 'selected' : ''}>2W</option>
+                    <option value="52" ${e.freq == 52 ? 'selected' : ''}>Wk</option>
+                    <option value="365" ${e.freq == 365 ? 'selected' : ''}>Day</option>
+                </select>
+                <button onclick="removeRow('expense', ${e.id})" class="remove-btn">×</button>
+            </div>
+        `).join('');
+
+        document.getElementById('assets-list').innerHTML = state.assets.map(a => `
+            <tr>
+                <td><input type="text" value="${a.name}" class="input-field" oninput="updateItem('asset', ${a.id}, 'name', this.value)"></td>
+                <td><input type="number" value="${a.balance}" class="input-field" oninput="updateItem('asset', ${a.id}, 'balance', this.value)"></td>
+                <td><input type="number" value="${a.contrib}" class="input-field" oninput="updateItem('asset', ${a.id}, 'contrib', this.value)"></td>
+                <td>
+                    <select class="input-field text-[10px]" onchange="updateItem('asset', ${a.id}, 'freq', this.value); calculateAndRefresh(true)">
+                        <option value="1" ${a.freq == 1 ? 'selected' : ''}>Yr</option>
+                        <option value="12" ${a.freq == 12 ? 'selected' : ''}>Mo</option>
+                        <option value="26" ${a.freq == 26 ? 'selected' : ''}>2W</option>
+                        <option value="52" ${a.freq == 52 ? 'selected' : ''}>Wk</option>
+                    </select>
+                </td>
+                <td><input type="number" value="${a.apy}" class="input-field" oninput="updateItem('asset', ${a.id}, 'apy', this.value)"></td>
+                <td><button onclick="removeRow('asset', ${a.id})" class="remove-btn">×</button></td>
+            </tr>
+        `).join('');
+
+        renderDebtList();
+    }
+
+    function renderDebtList() {
+        const strat = document.getElementById('active-strategy').value;
+        const pCount = state.debts.length;
+        
+        let targetId = null;
+        if (strat === 'avalanche') targetId = [...state.debts].sort((a,b) => b.apr - a.apr)[0]?.id;
+        else if (strat === 'manual') targetId = [...state.debts].sort((a,b) => a.priority - b.priority)[0]?.id;
+
+        document.getElementById('debts-list').innerHTML = state.debts.map(d => {
+            const isTarget = d.id === targetId && strat !== 'min';
+            return `
+            <tr class="${isTarget ? 'target-row' : ''}">
+                <td><input type="text" value="${d.name}" class="input-field ${isTarget ? 'target-input' : ''}" oninput="updateItem('debt', ${d.id}, 'name', this.value)"></td>
+                <td>
+                    <select class="input-field text-xs" onchange="updateItem('debt', ${d.id}, 'type', this.value); calculateAndRefresh(true);">
+                        <option value="mortgage" ${d.type === 'mortgage' ? 'selected' : ''}>Mortgage</option>
+                        <option value="loan" ${d.type === 'loan' ? 'selected' : ''}>Loan</option>
+                        <option value="credit" ${d.type === 'credit' ? 'selected' : ''}>Credit Card</option>
+                    </select>
+                </td>
+                <td><input type="number" value="${d.balance}" class="input-field font-bold" oninput="updateItem('debt', ${d.id}, 'balance', this.value)"></td>
+                <td><input type="number" value="${d.apr}" class="input-field text-rose-600" oninput="updateItem('debt', ${d.id}, 'apr', this.value)"></td>
+                <td>
+                    <div class="relative">
+                        <input type="number" id="pmt-display-${d.id}" value="${d.minPayment}" class="input-field ${isTarget ? 'target-input border-sky-400' : ''}" oninput="updateItem('debt', ${d.id}, 'minPayment', this.value)">
+                        ${isTarget ? '<span class="absolute -top-3 left-0 text-[7px] bg-sky-500 text-white px-1 rounded uppercase">Aggressive</span>' : ''}
+                    </div>
+                </td>
+                <td>
+                    <select class="input-field" onchange="updateItem('debt', ${d.id}, 'priority', this.value); calculateAndRefresh(true);">
+                        ${Array.from({length: pCount}, (_, i) => `<option value="${i+1}" ${d.priority === i+1 ? 'selected' : ''}>${i+1}</option>`).join('')}
+                    </select>
+                </td>
+                <td><button onclick="removeRow('debt', ${d.id})" class="remove-btn">×</button></td>
+            </tr>
+        `}).join('');
+    }
+
+    function updateItem(type, id, field, val) {
+        const item = state[type + 's'].find(x => x.id === id);
+        if (field === 'priority') {
+            const oldP = item.priority;
+            const newP = parseInt(val);
+            const swap = state.debts.find(d => d.priority === newP && d.id !== id);
+            if (swap) swap.priority = oldP;
+            item.priority = newP;
+        } else {
+            item[field] = (field === 'name' || field === 'type') ? val : parseFloat(val) || 0;
+        }
+        calculateAndRefresh();
+    }
+
+    function addRow(type) {
+        if (type === 'expense') state.expenses.push({ id: Date.now(), name: '', amount: 0, freq: 12 });
+        if (type === 'asset') state.assets.push({ id: Date.now(), name: '', balance: 0, contrib: 0, freq: 12, apy: 5 });
+        if (type === 'debt') state.debts.push({ id: Date.now(), name: '', type: 'loan', balance: 0, apr: 10, minPayment: 0, priority: state.debts.length + 1 });
+        renderLists();
+        calculateAndRefresh();
+    }
+
+    function removeRow(type, id) {
+        state[type + 's'] = state[type + 's'].filter(x => x.id !== id);
+        if (type === 'debt') state.debts.sort((a,b) => a.priority - b.priority).forEach((d, i) => d.priority = i + 1);
+        renderLists();
+        calculateAndRefresh();
+    }
+
+    function calculateAndRefresh(reRenderList = false) {
+        const incomeFreq = document.getElementById('income-freq').value;
+        const incomeAmt = document.getElementById('income-amount').value;
+        const income = getMonthlyVal(incomeAmt, incomeFreq);
+        
+        const yearlyIncome = income * 12;
+        document.getElementById('yearly-income-label').innerText = `Est. Yearly: $${Math.floor(yearlyIncome).toLocaleString()}`;
+
+        const fixedExp = state.expenses.reduce((s, e) => s + getMonthlyVal(e.amount, e.freq), 0);
+        const fixedAst = state.assets.reduce((s, a) => s + getMonthlyVal(a.contrib, a.freq), 0);
+        const baseSurplus = income - fixedExp - fixedAst;
+        const nonMortgageMins = state.debts.filter(d => d.type !== 'mortgage').reduce((s, d) => s + d.minPayment, 0);
+        const surplus = Math.max(0, baseSurplus - nonMortgageMins);
+
+        if (reRenderList) renderLists();
+
+        const strat = document.getElementById('active-strategy').value;
+        let targetId = null;
+        if (strat === 'avalanche') targetId = [...state.debts].sort((a,b) => b.apr - a.apr)[0]?.id;
+        else if (strat === 'manual') targetId = [...state.debts].sort((a,b) => a.priority - b.priority)[0]?.id;
+
+        state.debts.forEach(d => {
+            const el = document.getElementById(`pmt-display-${d.id}`);
+            if (el) {
+                if (d.id === targetId && strat !== 'min' && d.type !== 'mortgage') el.value = (d.minPayment + surplus).toFixed(2);
+                else el.value = d.minPayment;
             }
-            syncUIFromState();
-            calculate();
-        }
+        });
 
-        window.saveData = () => {
-            state.income = parseFloat(document.getElementById('input-income').value) || 0;
-            state.expenses = parseFloat(document.getElementById('input-expenses').value) || 0;
-            localStorage.setItem('debtfree_data', JSON.stringify(state));
-            calculate();
+        const results = {
+            min: simulate('min', baseSurplus),
+            manual: simulate('manual', baseSurplus),
+            avalanche: simulate('avalanche', baseSurplus),
+            baseSurplus
         };
 
-        // Navigation
-        window.switchView = (view) => {
-            document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
-            document.getElementById(`view-${view}`).classList.remove('hidden');
-            
-            document.querySelectorAll('nav button').forEach(b => b.classList.remove('tab-active'));
-            document.getElementById(`tab-${view}`).classList.add('tab-active');
-            
-            if (view === 'dashboard') calculate();
-        };
+        updateUI(results, surplus);
+    }
 
-        // UI Manipulation
-        function syncUIFromState() {
-            document.getElementById('input-income').value = state.income;
-            document.getElementById('input-expenses').value = state.expenses;
-            renderDebtList();
+    function simulate(type, baseSurplus) {
+        let debts = JSON.parse(JSON.stringify(state.debts));
+        if (type === 'avalanche') debts.sort((a, b) => b.apr - a.apr);
+        else debts.sort((a, b) => a.priority - b.priority);
+
+        let totalInterest = 0, month = 0, payoffDates = {};
+        let history = [{ month: 0, balance: debts.reduce((s, d) => s + d.balance, 0) }];
+
+        while (month < 120) { 
+            month++;
+            let active = debts.filter(d => d.balance > 0);
+            if (active.length === 0) break;
+            
+            active.forEach(d => {
+                let interest = (d.balance * (d.apr / 100)) / 12;
+                d.balance += interest;
+                totalInterest += interest;
+            });
+
+            let cash = baseSurplus;
+            active.forEach(d => {
+                if (d.type === 'mortgage') {
+                    let pmt = Math.min(d.balance, d.minPayment);
+                    d.balance -= pmt;
+                } else {
+                    let pmt = Math.min(d.balance, d.minPayment, cash);
+                    d.balance -= pmt;
+                    cash -= pmt;
+                }
+                if (d.balance <= 0 && !payoffDates[d.name]) payoffDates[d.name] = month;
+            });
+
+            if (type !== 'min' && cash > 0) {
+                for (let d of active) {
+                    if (d.balance > 0) {
+                        let extra = Math.min(d.balance, cash);
+                        d.balance -= extra;
+                        cash -= extra;
+                        if (d.balance <= 0 && !payoffDates[d.name]) payoffDates[d.name] = month;
+                        if (cash <= 0) break;
+                    }
+                }
+            }
+
+            let bal = debts.reduce((s, d) => s + Math.max(0, d.balance), 0);
+            history.push({ month, balance: bal });
         }
 
-        function renderDebtList() {
-            const list = document.getElementById('debt-list');
-            list.innerHTML = state.debts.map((d, i) => `
-                <div class="bg-white p-4 rounded-xl border flex flex-col gap-3 shadow-sm hover:border-blue-200 transition-colors">
+        const lastBal = history[history.length-1].balance;
+        while (history.length <= 121) {
+            history.push({ month: history.length - 1, balance: lastBal });
+        }
+
+        return { history, totalInterest, totalMonths: month, payoffDates };
+    }
+
+    function updateUI(results, currentSurplus) {
+        const strat = document.getElementById('active-strategy').value;
+        const res = results[strat];
+        
+        const header = document.getElementById('header-surplus');
+        header.innerText = `$${currentSurplus.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
+        header.className = currentSurplus < 0 ? 'text-rose-600 text-xl font-black' : 'text-emerald-600 text-xl font-black';
+
+        document.getElementById('comparison-stats').innerHTML = `
+            <div class="p-4 bg-slate-50 rounded-xl border border-slate-100"><span class="text-[10px] font-bold text-slate-400 uppercase">Total Interest</span><div class="text-xl font-black text-slate-800">$${Math.floor(res.totalInterest).toLocaleString()}</div></div>
+            <div class="p-4 bg-blue-50 rounded-xl border border-blue-100"><span class="text-[10px] font-bold text-blue-400 uppercase">10-Yr Interest Paid</span><div class="text-xl font-black text-blue-800">$${Math.floor(res.totalInterest).toLocaleString()}</div></div>
+            <div class="p-4 bg-emerald-50 rounded-xl border border-emerald-100"><span class="text-[10px] font-bold text-emerald-400 uppercase">Interest Saved</span><div class="text-xl font-black text-emerald-800">$${Math.floor(Math.max(0, results.min.totalInterest - res.totalInterest)).toLocaleString()}</div></div>
+        `;
+
+        document.getElementById('payoff-order-list').innerHTML = `<h4 class="text-[10px] font-black text-slate-400 uppercase mb-2">Timeline</h4>` + 
+            Object.entries(res.payoffDates).sort((a,b) => a[1] - b[1]).map(([n, m]) => `
+                <div class="flex flex-col p-2 bg-slate-50 rounded-lg border-l-4 border-blue-500">
                     <div class="flex justify-between items-center">
-                        <input type="text" value="${d.name}" class="font-bold outline-none border-b border-transparent focus:border-blue-400 w-2/3" onchange="updateDebt(${i}, 'name', this.value)">
-                        <button onclick="removeDebt(${i})" class="text-rose-500 text-[10px] font-black uppercase tracking-tighter">Remove</button>
+                        <span class="font-bold text-slate-700">${n || 'Unnamed Debt'}</span>
+                        <span class="font-black text-blue-600">${m} Mo</span>
                     </div>
-                    <div class="grid grid-cols-3 gap-3">
-                        <div class="space-y-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">Balance</label>
-                            <div class="relative">
-                                <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">$</span>
-                                <input type="number" value="${d.balance}" class="w-full text-xs font-bold pl-5 p-2 bg-slate-50 rounded-lg border focus:ring-1 focus:ring-blue-500 outline-none" oninput="updateDebt(${i}, 'balance', this.value)">
-                            </div>
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">APR %</label>
-                            <input type="number" value="${d.apr}" class="w-full text-xs font-bold p-2 bg-slate-50 rounded-lg border focus:ring-1 focus:ring-blue-500 outline-none" oninput="updateDebt(${i}, 'apr', this.value)">
-                        </div>
-                        <div class="space-y-1">
-                            <label class="text-[9px] font-bold text-slate-400 uppercase">Min Pmt</label>
-                            <div class="relative">
-                                <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">$</span>
-                                <input type="number" value="${d.min}" class="w-full text-xs font-bold pl-5 p-2 bg-slate-50 rounded-lg border focus:ring-1 focus:ring-blue-500 outline-none" oninput="updateDebt(${i}, 'min', this.value)">
-                            </div>
-                        </div>
-                    </div>
+                    <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estimated: ${getMonthYear(m)}</div>
                 </div>
             `).join('');
+
+        renderVisuals(results);
+    }
+
+    function renderVisuals(results) {
+        const ctxPie = document.getElementById('pieChart').getContext('2d');
+        if (charts.pie) charts.pie.destroy();
+        const income = getMonthlyVal(document.getElementById('income-amount').value, document.getElementById('income-freq').value);
+        
+        const labels = [];
+        const data = [];
+        const colors = [];
+
+        state.expenses.forEach(e => {
+            labels.push(e.name || 'Expense');
+            data.push(getMonthlyVal(e.amount, e.freq));
+            colors.push('#94a3b8');
+        });
+
+        state.assets.forEach(a => {
+            labels.push(a.name + ' Contrib');
+            data.push(getMonthlyVal(a.contrib, a.freq));
+            colors.push('#10b981');
+        });
+
+        state.debts.forEach(d => {
+            labels.push(d.name + ' Pmt');
+            data.push(d.minPayment);
+            colors.push('#f43f5e');
+        });
+
+        const totalOut = data.reduce((s,v) => s+v, 0);
+        const surplus = Math.max(0, income - totalOut);
+        if (surplus > 0) {
+            labels.push('Monthly Surplus');
+            data.push(surplus);
+            colors.push('#3b82f6');
         }
+        
+        charts.pie = new Chart(ctxPie, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{ data: data, backgroundColor: colors, borderWidth: 1, borderColor: '#fff' }]
+            },
+            options: { cutout: '65%', plugins: { legend: { display: false } } }
+        });
 
-        window.updateDebt = (idx, field, val) => {
-            state.debts[idx][field] = field === 'name' ? val : parseFloat(val);
-            localStorage.setItem('debtfree_data', JSON.stringify(state));
-            calculate();
-        };
-
-        window.addDebt = () => {
-            state.debts.push({ id: Date.now(), name: 'New Debt', balance: 1000, apr: 15, min: 25 });
-            renderDebtList();
-            saveData();
-        };
-
-        window.removeDebt = (idx) => {
-            state.debts.splice(idx, 1);
-            renderDebtList();
-            saveData();
-        };
-
-        // Financial Simulation
-        function calculate() {
-            const debtsArr = state.debts || [];
-            const totalMin = debtsArr.reduce((s,d) => s + (d.min || 0), 0);
-            const surplus = state.income - state.expenses - totalMin;
-            
-            document.getElementById('stat-surplus').innerText = `$${Math.max(0, Math.round(surplus)).toLocaleString()}`;
-            document.getElementById('mobile-surplus').innerText = `$${Math.max(0, Math.round(surplus)).toLocaleString()}`;
-            document.getElementById('stat-debt').innerText = `$${Math.round(debtsArr.reduce((s,d) => s + (d.balance || 0), 0)).toLocaleString()}`;
-
-            // Simulation (Avalanche)
-            let simDebts = JSON.parse(JSON.stringify(debtsArr)).sort((a,b) => b.apr - a.apr);
-            let history = [{ month: 0, balance: simDebts.reduce((s,d) => s + d.balance, 0) }];
-            let months = 0;
-
-            while (months < 240) {
-                months++;
-                let currentCash = state.income - state.expenses;
-                
-                // 1. Accrue Interest
-                simDebts.forEach(d => { if (d.balance > 0) d.balance *= (1 + (d.apr/100)/12); });
-
-                // 2. Pay Minimums
-                simDebts.forEach(d => {
-                    if (d.balance > 0) {
-                        let p = Math.min(d.balance, d.min);
-                        d.balance -= p;
-                        currentCash -= p;
-                    }
-                });
-
-                // 3. Apply Surplus to High Interest
-                for (let d of simDebts) {
-                    if (d.balance > 0) {
-                        let p = Math.min(d.balance, Math.max(0, currentCash));
-                        d.balance -= p;
-                        currentCash -= p;
-                        if (currentCash <= 0) break;
+        // Common Chart Options for Line Charts
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { labels: { color: '#fff' } },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) {
+                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
+                            }
+                            return label;
+                        },
+                        title: function(context) {
+                            return `Month ${context[0].label} (${getMonthYear(parseInt(context[0].label))})`;
+                        }
                     }
                 }
-
-                let total = simDebts.reduce((s,d) => s + Math.max(0, d.balance), 0);
-                history.push({ month: months, balance: total });
-                if (total <= 0) break;
             }
-
-            document.getElementById('stat-date').innerText = months >= 240 ? "20+ Years" : `${months} Months`;
-            renderCharts(history);
-        }
-
-        function renderCharts(history) {
-            // Debt Chart
-            const ctxD = document.getElementById('debtChart').getContext('2d');
-            if (charts.debt) charts.debt.destroy();
-            charts.debt = new Chart(ctxD, {
-                type: 'line',
-                data: {
-                    labels: history.map(h => h.month),
-                    datasets: [{
-                        label: 'Debt',
-                        data: history.map(h => h.balance),
-                        borderColor: '#3b82f6',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.4,
-                        pointRadius: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { grid: { display: false }, ticks: { color: '#64748b', maxTicksLimit: 10 } },
-                        y: { grid: { color: '#334155' }, ticks: { color: '#64748b' } }
-                    }
-                }
-            });
-
-            // Net Worth Chart
-            const ctxNW = document.getElementById('nwChart').getContext('2d');
-            if (charts.nw) charts.nw.destroy();
-            charts.nw = new Chart(ctxNW, {
-                type: 'line',
-                data: {
-                    labels: history.map(h => h.month),
-                    datasets: [{
-                        label: 'NW',
-                        data: history.map(h => (h.month * 500) - h.balance),
-                        borderColor: '#10b981',
-                        borderWidth: 2,
-                        tension: 0.4,
-                        pointRadius: 0
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
-                        y: { grid: { color: '#f1f5f9' } }
-                    }
-                }
-            });
-        }
-
-        window.onload = () => {
-            loadData();
-            switchView('dashboard');
         };
-    </script>
+
+        const ctxDebt = document.getElementById('debtChart').getContext('2d');
+        if (charts.debt) charts.debt.destroy();
+        charts.debt = new Chart(ctxDebt, {
+            type: 'line',
+            data: {
+                labels: Array.from({length: 121}, (_, i) => i),
+                datasets: [
+                    { label: 'Min Only', data: results.min.history.map(h => h.balance), borderColor: '#f43f5e', pointRadius: 0, borderDash: [5,5] },
+                    { label: 'Manual Strategy', data: results.manual.history.map(h => h.balance), borderColor: '#10b981', pointRadius: 0 },
+                    { label: 'Avalanche Strategy', data: results.avalanche.history.map(h => h.balance), borderColor: '#3b82f6', pointRadius: 0, borderWidth: 3 }
+                ]
+            },
+            options: { 
+                ...commonOptions,
+                scales: { 
+                    y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, 
+                    x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } } 
+                } 
+            }
+        });
+
+        const manualEnd = results.manual.totalMonths;
+        const avalancheEnd = results.avalanche.totalMonths;
+        const endMonth = Math.min(120, Math.max(manualEnd, avalancheEnd, 12));
+        
+        const nwLabels = Array.from({length: endMonth + 1}, (_, i) => i);
+        
+        const calculateNWPath = (debtHist) => {
+            return nwLabels.map(m => {
+                let assetsVal = state.assets.reduce((sum, a) => {
+                    let r = (a.apy/100)/12, v = a.balance * Math.pow(1+r, m), c = getMonthlyVal(a.contrib, a.freq);
+                    return sum + (r > 0 ? v + c * (Math.pow(1+r, m) - 1) / r : v + c * m);
+                }, 0);
+                let currentDebt = debtHist.find(h => h.month === m)?.balance || 0;
+                return assetsVal - currentDebt;
+            });
+        };
+
+        const ctxNw = document.getElementById('nwChart').getContext('2d');
+        if (charts.nw) charts.nw.destroy();
+        charts.nw = new Chart(ctxNw, {
+            type: 'line',
+            data: {
+                labels: nwLabels,
+                datasets: [
+                    { label: 'Min NW', data: calculateNWPath(results.min.history), borderColor: '#f43f5e', pointRadius: 0, borderDash: [5,5] },
+                    { label: 'Manual NW', data: calculateNWPath(results.manual.history), borderColor: '#10b981', pointRadius: 0 },
+                    { label: 'Avalanche NW', data: calculateNWPath(results.avalanche.history), borderColor: '#3b82f6', pointRadius: 0, borderWidth: 3 }
+                ]
+            },
+            options: { 
+                ...commonOptions,
+                plugins: {
+                    ...commonOptions.plugins,
+                    legend: { labels: { color: '#1e293b' } }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Months to Debt Freedom' } },
+                    y: { ticks: { callback: (val) => '$' + val.toLocaleString() } }
+                }
+            }
+        });
+    }
+
+    init();
+</script>
 </body>
 </html>
