@@ -12,6 +12,7 @@
         .card { background: white; border-radius: 1rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 1.5rem; border: 1px solid #e2e8f0; }
         .input-field { border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.5rem; width: 100%; font-size: 0.875rem; }
         .input-field:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .input-field:disabled { background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; border-color: #e2e8f0; }
         .remove-btn { color: #ef4444; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; font-weight: bold; }
         .remove-btn:hover { background-color: #fee2e2; }
         
@@ -25,6 +26,8 @@
         .target-row { background-color: #f0f9ff !important; }
         .target-input { border-color: #0ea5e9 !important; font-weight: 800 !important; color: #0369a1 !important; }
 
+        #save-indicator { transition: opacity 0.5s ease; opacity: 0; }
+
         @media (max-width: 1024px) { .grid-container { grid-template-columns: 1fr; } .full-width { grid-column: span 1; } }
     </style>
 </head>
@@ -32,10 +35,11 @@
 
 <div id="app">
     <header class="p-6 bg-white border-b flex justify-between items-center sticky top-0 z-40">
-        <div>
+        <div class="flex items-center gap-4">
             <h1 class="text-3xl font-extrabold text-slate-900 flex items-center gap-2">
                 <span class="bg-blue-600 text-white px-2 py-1 rounded">DF</span> DebtFree
             </h1>
+            <span id="save-indicator" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100 uppercase tracking-tighter">Auto-Saved</span>
         </div>
         <div class="flex items-center gap-6">
             <div class="text-right">
@@ -95,7 +99,7 @@
                 <div class="flex justify-between items-start mb-2">
                     <h2 class="text-xl font-bold text-slate-800">Debt & Strategy</h2>
                     <div class="flex flex-col items-end gap-2">
-                        <select id="active-strategy" class="input-field w-44 font-bold bg-blue-50 border-blue-200" onchange="updateStrategyUI(); calculateAndRefresh(true)">
+                        <select id="active-strategy" class="input-field w-44 font-bold bg-blue-50 border-blue-200" onchange="handleStrategyChange()">
                             <option value="min">Min Payments Only</option>
                             <option value="manual">Aggressive Manual</option>
                             <option value="avalanche">Avalanche</option>
@@ -130,22 +134,34 @@
             </section>
         </div>
 
+        <!-- DARK THEMED CHARTS -->
         <section class="card full-width bg-slate-900 border-none p-8">
             <h2 class="text-xl font-bold mb-6 text-white">Debt Payoff Projection</h2>
             <div class="h-[400px]"><canvas id="debtChart"></canvas></div>
         </section>
 
-        <section class="card full-width">
-            <h2 class="text-xl font-bold mb-6 text-slate-800">Net Worth Forecast (To Debt Free)</h2>
+        <section class="card full-width bg-slate-900 border-none p-8">
+            <h2 class="text-xl font-bold mb-6 text-white">Net Worth Forecast (To Debt Free)</h2>
             <div class="h-[400px]"><canvas id="nwChart"></canvas></div>
         </section>
     </div>
 </div>
 
 <script>
+    const STORAGE_KEY = 'debt_free_planner_v1';
+
     let state = {
-        expenses: [{ id: 1, name: 'Housing', amount: 1500, freq: 12 }, { id: 2, name: 'Food & Utilities', amount: 800, freq: 12 }],
-        assets: [{ id: 1, name: '401k', balance: 15000, contrib: 400, freq: 12, apy: 7 }],
+        incomeAmount: 5500,
+        incomeFreq: "12",
+        weeklyHours: 40,
+        strategy: "min",
+        expenses: [
+            { id: 1, name: 'Housing', amount: 1500, freq: 12 }, 
+            { id: 2, name: 'Food & Utilities', amount: 800, freq: 12 }
+        ],
+        assets: [
+            { id: 1, name: '401k', balance: 15000, contrib: 400, freq: 12, apy: 7 }
+        ],
         debts: [
             { id: 1, name: 'Credit Card', type: 'credit', balance: 6000, apr: 22, minPayment: 180, priority: 1 },
             { id: 2, name: 'Home Mortgage', type: 'mortgage', balance: 250000, apr: 6.5, minPayment: 1600, priority: 3 },
@@ -154,13 +170,40 @@
     };
 
     const STRATEGY_DESCRIPTIONS = {
-        min: "Pay only the minimum required amount on all debts. This usually results in the highest interest paid and longest payoff time.",
-        manual: "<strong>Aggressive Manual:</strong> Choose the order in which the loans are paid off. Priority 1 always receives maximum monthly payment your budget can afford. This may be desirable if you want to pay off loans with the largest minimum monthly payment first or if you want to payoff your loans in order of smallest to largest.",
+        min: "paying only the minimum required amount on all debts. This usually results in the highest interest paid and longest payoff time.",
+        manual: "<strong>Aggressive Manual:</strong> Choose the order in which the loans are paid off. Priority 1 always receives maximum monthly payment your budget can afford.",
         avalanche: "<strong>Avalanche:</strong> Loans are paid off as fast as possible in descending order of interest rates. This is mathematically the most efficient way to reduce total interest paid."
     };
 
     let charts = {};
+    let saveTimeout;
 
+    // --- Persistence ---
+    function saveToBrowser() {
+        // Sync DOM values into state before saving
+        state.incomeAmount = parseFloat(document.getElementById('income-amount').value) || 0;
+        state.incomeFreq = document.getElementById('income-freq').value;
+        state.weeklyHours = parseFloat(document.getElementById('weekly-hours').value) || 40;
+        state.strategy = document.getElementById('active-strategy').value;
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        
+        const indicator = document.getElementById('save-indicator');
+        indicator.style.opacity = '1';
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => indicator.style.opacity = '0', 1500);
+    }
+
+    function loadFromBrowser() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try {
+                state = JSON.parse(saved);
+            } catch (e) { console.error("Error parsing saved data", e); }
+        }
+    }
+
+    // --- Helpers ---
     function getMonthlyVal(amt, freq) { 
         if (freq === 'hourly') {
             const hours = parseFloat(document.getElementById('weekly-hours').value) || 0;
@@ -172,11 +215,13 @@
     function toggleHourlyDisplay() {
         const freq = document.getElementById('income-freq').value;
         const hourlySettings = document.getElementById('hourly-settings');
-        if (freq === 'hourly') {
-            hourlySettings.classList.remove('hidden');
-        } else {
-            hourlySettings.classList.add('hidden');
-        }
+        if (freq === 'hourly') hourlySettings.classList.remove('hidden');
+        else hourlySettings.classList.add('hidden');
+    }
+
+    function handleStrategyChange() {
+        updateStrategyUI();
+        calculateAndRefresh(true);
     }
 
     function updateStrategyUI() {
@@ -191,6 +236,15 @@
     }
 
     function init() {
+        loadFromBrowser();
+        
+        // Populate static inputs from state
+        document.getElementById('income-amount').value = state.incomeAmount;
+        document.getElementById('income-freq').value = state.incomeFreq;
+        document.getElementById('weekly-hours').value = state.weeklyHours;
+        document.getElementById('active-strategy').value = state.strategy;
+
+        toggleHourlyDisplay();
         renderLists();
         updateStrategyUI();
         calculateAndRefresh();
@@ -238,11 +292,23 @@
         const pCount = state.debts.length;
         
         let targetId = null;
-        if (strat === 'avalanche') targetId = [...state.debts].sort((a,b) => b.apr - a.apr)[0]?.id;
-        else if (strat === 'manual') targetId = [...state.debts].sort((a,b) => a.priority - b.priority)[0]?.id;
+        let priorityMap = {};
+
+        if (strat === 'avalanche') {
+            const sorted = [...state.debts].sort((a, b) => b.apr - a.apr);
+            sorted.forEach((d, i) => priorityMap[d.id] = i + 1);
+            targetId = sorted[0]?.id;
+        } else if (strat === 'manual') {
+            state.debts.forEach(d => priorityMap[d.id] = d.priority);
+            targetId = [...state.debts].sort((a,b) => a.priority - b.priority)[0]?.id;
+        } else {
+            state.debts.forEach(d => priorityMap[d.id] = '-');
+        }
 
         document.getElementById('debts-list').innerHTML = state.debts.map(d => {
             const isTarget = d.id === targetId && strat !== 'min';
+            const currentPriority = priorityMap[d.id];
+            
             return `
             <tr class="${isTarget ? 'target-row' : ''}">
                 <td><input type="text" value="${d.name}" class="input-field ${isTarget ? 'target-input' : ''}" oninput="updateItem('debt', ${d.id}, 'name', this.value)"></td>
@@ -262,8 +328,14 @@
                     </div>
                 </td>
                 <td>
-                    <select class="input-field" onchange="updateItem('debt', ${d.id}, 'priority', this.value); calculateAndRefresh(true);">
-                        ${Array.from({length: pCount}, (_, i) => `<option value="${i+1}" ${d.priority === i+1 ? 'selected' : ''}>${i+1}</option>`).join('')}
+                    <select class="input-field" 
+                            ${strat !== 'manual' ? 'disabled' : ''} 
+                            onchange="updateItem('debt', ${d.id}, 'priority', this.value); calculateAndRefresh(true);">
+                        ${strat === 'min' ? '<option selected>-</option>' : ''}
+                        ${strat === 'manual' ? 
+                            Array.from({length: pCount}, (_, i) => `<option value="${i+1}" ${currentPriority === i+1 ? 'selected' : ''}>${i+1}</option>`).join('')
+                            : `<option selected>${currentPriority}</option>`
+                        }
                     </select>
                 </td>
                 <td><button onclick="removeRow('debt', ${d.id})" class="remove-btn">×</button></td>
@@ -282,7 +354,8 @@
         } else {
             item[field] = (field === 'name' || field === 'type') ? val : parseFloat(val) || 0;
         }
-        calculateAndRefresh();
+        const strat = document.getElementById('active-strategy').value;
+        calculateAndRefresh(strat === 'avalanche' && field === 'apr');
     }
 
     function addRow(type) {
@@ -300,45 +373,6 @@
         calculateAndRefresh();
     }
 
-    function calculateAndRefresh(reRenderList = false) {
-        const incomeFreq = document.getElementById('income-freq').value;
-        const incomeAmt = document.getElementById('income-amount').value;
-        const income = getMonthlyVal(incomeAmt, incomeFreq);
-        
-        const yearlyIncome = income * 12;
-        document.getElementById('yearly-income-label').innerText = `Est. Yearly: $${Math.floor(yearlyIncome).toLocaleString()}`;
-
-        const fixedExp = state.expenses.reduce((s, e) => s + getMonthlyVal(e.amount, e.freq), 0);
-        const fixedAst = state.assets.reduce((s, a) => s + getMonthlyVal(a.contrib, a.freq), 0);
-        const baseSurplus = income - fixedExp - fixedAst;
-        const nonMortgageMins = state.debts.filter(d => d.type !== 'mortgage').reduce((s, d) => s + d.minPayment, 0);
-        const surplus = Math.max(0, baseSurplus - nonMortgageMins);
-
-        if (reRenderList) renderLists();
-
-        const strat = document.getElementById('active-strategy').value;
-        let targetId = null;
-        if (strat === 'avalanche') targetId = [...state.debts].sort((a,b) => b.apr - a.apr)[0]?.id;
-        else if (strat === 'manual') targetId = [...state.debts].sort((a,b) => a.priority - b.priority)[0]?.id;
-
-        state.debts.forEach(d => {
-            const el = document.getElementById(`pmt-display-${d.id}`);
-            if (el) {
-                if (d.id === targetId && strat !== 'min' && d.type !== 'mortgage') el.value = (d.minPayment + surplus).toFixed(2);
-                else el.value = d.minPayment;
-            }
-        });
-
-        const results = {
-            min: simulate('min', baseSurplus),
-            manual: simulate('manual', baseSurplus),
-            avalanche: simulate('avalanche', baseSurplus),
-            baseSurplus
-        };
-
-        updateUI(results, surplus);
-    }
-
     function simulate(type, baseSurplus) {
         let debts = JSON.parse(JSON.stringify(state.debts));
         if (type === 'avalanche') debts.sort((a, b) => b.apr - a.apr);
@@ -347,7 +381,7 @@
         let totalInterest = 0, month = 0, payoffDates = {};
         let history = [{ month: 0, balance: debts.reduce((s, d) => s + d.balance, 0) }];
 
-        while (month < 120) { 
+        while (month < 360) { 
             month++;
             let active = debts.filter(d => d.balance > 0);
             if (active.length === 0) break;
@@ -387,12 +421,38 @@
             history.push({ month, balance: bal });
         }
 
-        const lastBal = history[history.length-1].balance;
         while (history.length <= 121) {
-            history.push({ month: history.length - 1, balance: lastBal });
+            history.push({ month: history.length - 1, balance: history[history.length-1].balance });
         }
 
         return { history, totalInterest, totalMonths: month, payoffDates };
+    }
+
+    function calculateAndRefresh(reRenderList = false) {
+        const incomeFreq = document.getElementById('income-freq').value;
+        const incomeAmt = document.getElementById('income-amount').value;
+        const income = getMonthlyVal(incomeAmt, incomeFreq);
+        
+        const yearlyIncome = income * 12;
+        document.getElementById('yearly-income-label').innerText = `Est. Yearly: $${Math.floor(yearlyIncome).toLocaleString()}`;
+
+        const fixedExp = state.expenses.reduce((s, e) => s + getMonthlyVal(e.amount, e.freq), 0);
+        const fixedAst = state.assets.reduce((s, a) => s + getMonthlyVal(a.contrib, a.freq), 0);
+        const baseSurplus = income - fixedExp - fixedAst;
+        const nonMortgageMins = state.debts.filter(d => d.type !== 'mortgage').reduce((s, d) => s + d.minPayment, 0);
+        const surplus = Math.max(0, baseSurplus - nonMortgageMins);
+
+        if (reRenderList) renderDebtList();
+
+        const results = {
+            min: simulate('min', baseSurplus),
+            manual: simulate('manual', baseSurplus),
+            avalanche: simulate('avalanche', baseSurplus),
+            baseSurplus
+        };
+
+        updateUI(results, surplus);
+        saveToBrowser();
     }
 
     function updateUI(results, currentSurplus) {
@@ -403,9 +463,14 @@
         header.innerText = `$${currentSurplus.toLocaleString(undefined, {minimumFractionDigits: 2})}`;
         header.className = currentSurplus < 0 ? 'text-rose-600 text-xl font-black' : 'text-emerald-600 text-xl font-black';
 
+        const totalMonths = res.totalMonths;
+        const years = Math.floor(totalMonths / 12);
+        const remainingMonths = totalMonths % 12;
+        const timeStr = years > 0 ? `${years}y ${remainingMonths}m` : `${totalMonths}m`;
+
         document.getElementById('comparison-stats').innerHTML = `
             <div class="p-4 bg-slate-50 rounded-xl border border-slate-100"><span class="text-[10px] font-bold text-slate-400 uppercase">Total Interest</span><div class="text-xl font-black text-slate-800">$${Math.floor(res.totalInterest).toLocaleString()}</div></div>
-            <div class="p-4 bg-blue-50 rounded-xl border border-blue-100"><span class="text-[10px] font-bold text-blue-400 uppercase">10-Yr Interest Paid</span><div class="text-xl font-black text-blue-800">$${Math.floor(res.totalInterest).toLocaleString()}</div></div>
+            <div class="p-4 bg-blue-50 rounded-xl border border-blue-100"><span class="text-[10px] font-bold text-blue-400 uppercase">Time to Debt Free</span><div class="text-xl font-black text-blue-800">${timeStr}</div></div>
             <div class="p-4 bg-emerald-50 rounded-xl border border-emerald-100"><span class="text-[10px] font-bold text-emerald-400 uppercase">Interest Saved</span><div class="text-xl font-black text-emerald-800">$${Math.floor(Math.max(0, results.min.totalInterest - res.totalInterest)).toLocaleString()}</div></div>
         `;
 
@@ -432,66 +497,41 @@
         const data = [];
         const colors = [];
 
-        state.expenses.forEach(e => {
-            labels.push(e.name || 'Expense');
-            data.push(getMonthlyVal(e.amount, e.freq));
-            colors.push('#94a3b8');
-        });
-
-        state.assets.forEach(a => {
-            labels.push(a.name + ' Contrib');
-            data.push(getMonthlyVal(a.contrib, a.freq));
-            colors.push('#10b981');
-        });
-
-        state.debts.forEach(d => {
-            labels.push(d.name + ' Pmt');
-            data.push(d.minPayment);
-            colors.push('#f43f5e');
-        });
+        state.expenses.forEach(e => { labels.push(e.name || 'Expense'); data.push(getMonthlyVal(e.amount, e.freq)); colors.push('#94a3b8'); });
+        state.assets.forEach(a => { labels.push(a.name + ' Contrib'); data.push(getMonthlyVal(a.contrib, a.freq)); colors.push('#10b981'); });
+        state.debts.forEach(d => { labels.push(d.name + ' Pmt'); data.push(d.minPayment); colors.push('#f43f5e'); });
 
         const totalOut = data.reduce((s,v) => s+v, 0);
         const surplus = Math.max(0, income - totalOut);
-        if (surplus > 0) {
-            labels.push('Monthly Surplus');
-            data.push(surplus);
-            colors.push('#3b82f6');
-        }
+        if (surplus > 0) { labels.push('Monthly Surplus'); data.push(surplus); colors.push('#3b82f6'); }
         
         charts.pie = new Chart(ctxPie, {
             type: 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{ data: data, backgroundColor: colors, borderWidth: 1, borderColor: '#fff' }]
-            },
+            data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 1, borderColor: '#fff' }] },
             options: { cutout: '65%', plugins: { legend: { display: false } } }
         });
 
-        // Common Chart Options for Line Charts
-        const commonOptions = {
+        const darkOptions = {
             responsive: true,
             maintainAspectRatio: false,
-            interaction: {
-                mode: 'index',
-                intersect: false,
-            },
+            interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { labels: { color: '#fff' } },
+                legend: { labels: { color: '#fff', font: { weight: 'bold' } } },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
                             let label = context.dataset.label || '';
                             if (label) label += ': ';
-                            if (context.parsed.y !== null) {
-                                label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
-                            }
+                            if (context.parsed.y !== null) label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y);
                             return label;
                         },
-                        title: function(context) {
-                            return `Month ${context[0].label} (${getMonthYear(parseInt(context[0].label))})`;
-                        }
+                        title: (context) => `Month ${context[0].label} (${getMonthYear(parseInt(context[0].label))})`
                     }
                 }
+            },
+            scales: { 
+                y: { grid: { color: '#334155' }, border: { display: false }, ticks: { color: '#94a3b8', callback: (v) => '$' + v.toLocaleString() } }, 
+                x: { grid: { color: '#334155' }, border: { display: false }, ticks: { color: '#94a3b8' } } 
             }
         };
 
@@ -507,28 +547,17 @@
                     { label: 'Avalanche Strategy', data: results.avalanche.history.map(h => h.balance), borderColor: '#3b82f6', pointRadius: 0, borderWidth: 3 }
                 ]
             },
-            options: { 
-                ...commonOptions,
-                scales: { 
-                    y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }, 
-                    x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } } 
-                } 
-            }
+            options: darkOptions
         });
 
-        const manualEnd = results.manual.totalMonths;
-        const avalancheEnd = results.avalanche.totalMonths;
-        const endMonth = Math.min(120, Math.max(manualEnd, avalancheEnd, 12));
-        
-        const nwLabels = Array.from({length: endMonth + 1}, (_, i) => i);
-        
+        const nwLabels = Array.from({length: 121}, (_, i) => i);
         const calculateNWPath = (debtHist) => {
             return nwLabels.map(m => {
                 let assetsVal = state.assets.reduce((sum, a) => {
                     let r = (a.apy/100)/12, v = a.balance * Math.pow(1+r, m), c = getMonthlyVal(a.contrib, a.freq);
                     return sum + (r > 0 ? v + c * (Math.pow(1+r, m) - 1) / r : v + c * m);
                 }, 0);
-                let currentDebt = debtHist.find(h => h.month === m)?.balance || 0;
+                let currentDebt = debtHist[m]?.balance || 0;
                 return assetsVal - currentDebt;
             });
         };
@@ -545,21 +574,11 @@
                     { label: 'Avalanche NW', data: calculateNWPath(results.avalanche.history), borderColor: '#3b82f6', pointRadius: 0, borderWidth: 3 }
                 ]
             },
-            options: { 
-                ...commonOptions,
-                plugins: {
-                    ...commonOptions.plugins,
-                    legend: { labels: { color: '#1e293b' } }
-                },
-                scales: {
-                    x: { title: { display: true, text: 'Months to Debt Freedom' } },
-                    y: { ticks: { callback: (val) => '$' + val.toLocaleString() } }
-                }
-            }
+            options: darkOptions
         });
     }
 
-    init();
+    window.onload = init;
 </script>
 </body>
 </html>
